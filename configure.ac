@@ -93,6 +93,31 @@ then
    AC_DEFINE([NDEBUG],1,[If CppAD is being used by the benchmarking program then it is much faster with debugging disabled])
 fi
 
+### OPTIONAL MPI LIBRARIES ###
+
+AC_ARG_ENABLE(mpi, [AC_HELP_STRING([--enable-mpi],[compile Adept with MPI])], enable_mpi=$enableval, enable_mpi=no)
+
+if test "$enable_mpi" = "yes"; then
+
+   ACX_MPI([],[AC_MSG_ERROR([could not find mpi library for --enable-mpi])])
+   AC_CHECK_PROG(MPIRUN, mpirun, mpirun)
+   AC_SUBST(MPIRUN)
+
+    save_CXX=$CXX
+    CXX=$MPICXX
+   AC_CHECK_SIZEOF(MPI_Fint, [], [#include <mpi.h>])
+    CXX=$save_CXX
+   if test 0 = $ac_cv_sizeof_MPI_Fint; then
+       AC_MSG_WARN([sizeof(MPI_Fint) test failed])
+       dnl As a backup, assume Fortran integer == C++ int
+      AC_CHECK_SIZEOF(int)
+       if test 0 = $ac_cv_sizeof_int; then AC_MSG_ERROR([sizeof(int) test failed]); fi
+      ac_cv_sizeof_MPI_Fint=$ac_cv_sizeof_int
+   fi
+   C_MPI_FINT=C_INT`expr $ac_cv_sizeof_MPI_Fint \* 8`_T
+   AC_SUBST(C_MPI_FINT)
+fi
+AM_CONDITIONAL(MPI, test "$enable_mpi" = "yes")
 
 ### CREATE MAKEFILES AND CONFIG HEADER ###
 
