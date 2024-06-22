@@ -176,6 +176,19 @@ namespace adept {
     { message_ = message; }
   };
 
+    // -------------------------------------------------------------------
+  // MPI_exception
+  // -------------------------------------------------------------------
+
+  // The optimization_exception type
+  class MPI_exception : public adept::exception { 
+  public:
+    MPI_exception(const std::string& message
+		    = "Attempt to use MPI features without MPI")
+    { message_ = message; }
+  };
+
+
 
   // -------------------------------------------------------------------
   // Provide location of where exception was thrown

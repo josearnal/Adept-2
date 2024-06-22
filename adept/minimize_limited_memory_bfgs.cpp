@@ -11,6 +11,7 @@
 #include <limits>
 
 #include <adept/Minimizer.h>
+#include <adept/AdeptMPI.h>
 
 namespace adept {
 
@@ -118,8 +119,12 @@ namespace adept {
       // satisfying the Wolfe conditions, then the current cost
       // function and gradient will be consistent with the current
       // state vector.  Otherwise we need to compute them.
+      adept::internal::Adept_Broadcast_MPI(&state_up_to_date,1);
+
       if (state_up_to_date < 1) {
 	cost_function_ = optimizable.calc_cost_function_gradient(x, gradient);
+
+  if(adept::internal::Adept_Primary_MPI_Processor()){
 	state_up_to_date = 1;
 	++n_samples_;
 
@@ -137,7 +142,9 @@ namespace adept {
 	  break;
 	}
       }
+    }
 
+  if(adept::internal::Adept_Primary_MPI_Processor()){
       // Check cost function and gradient are finite
       if (!std::isfinite(cost_function_)) {
 	status_ = MINIMIZER_STATUS_INVALID_COST_FUNCTION;
@@ -243,11 +250,17 @@ namespace adept {
 	status_ = MINIMIZER_STATUS_MAX_ITERATIONS_REACHED;
       }
 
+  } // end if primary processor
+
       // End of main loop: if status_ is anything other than
       // MINIMIZER_STATUS_NOT_YET_CONVERGED then no more iterations
       // are performed
+      adept::internal::Adept_Broadcast_MPI(&status_);
     }
      
+    adept::internal::Adept_Broadcast_MPI(&state_up_to_date,1); 
+    adept::internal::Adept_Broadcast_MPI(&ensure_updated_state_,1); 
+    
     if (state_up_to_date < ensure_updated_state_) {
       // The last call to calc_cost_function* was not with the state
       // vector returned to the user, and they want it to be.
