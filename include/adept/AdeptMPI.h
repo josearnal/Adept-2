@@ -18,6 +18,7 @@
 #endif//HAVE_MPI
 #include <adept/Minimizer.h>
 
+
 namespace adept {
 
     namespace internal {
