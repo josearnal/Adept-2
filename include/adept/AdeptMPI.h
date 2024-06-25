@@ -9,6 +9,10 @@
 #ifndef AdeptMPI_H
 #define AdeptMPI_H 1
 
+#ifdef HAVE_CONFIG_H
+#include "../config.h"
+#endif
+
 #ifdef HAVE_MPI
 #include "mpi.h"
 #endif//HAVE_MPI
@@ -36,6 +40,11 @@ namespace adept {
         // MPI -- inline functions.
         // -------------------------------------------------------------------
 
+        // Primary MPI Processor.
+        inline bool Adept_Primary_MPI_Processor(void) {
+           return(AdeptMPI::This_Processor_Number == AdeptMPI::Main_Processor_Number);
+        }
+        
         // Broadcast integers to all processors.
         inline void Adept_Broadcast_MPI(int *buffer, const int buffer_size) {
             #ifdef HAVE_MPI
@@ -44,6 +53,42 @@ namespace adept {
                       MPI_INT,
                       AdeptMPI::Main_Processor_Number, 
                       MPI_COMM_WORLD );
+            #endif
+        }
+
+        // Broadcast integers to all processors.
+        inline void Adept_Broadcast_MPI(bool *buffer, const int buffer_size) {
+            #ifdef HAVE_MPI
+            MPI_Bcast(buffer,
+                      buffer_size,
+                      MPI_C_BOOL,
+                      AdeptMPI::Main_Processor_Number, 
+                      MPI_COMM_WORLD );
+            #endif
+        }
+
+        // Broadcast Reals to all processors.
+        inline void Adept_Broadcast_MPI(Real *buffer, const int buffer_size) {
+            #ifdef HAVE_MPI
+            #if ADEPT_REAL_TYPE_SIZE == 4
+                MPI_Bcast(buffer,
+                        buffer_size,
+                        MPI_FLOAT,
+                        AdeptMPI::Main_Processor_Number, 
+                        MPI_COMM_WORLD );
+            #elif ADEPT_REAL_TYPE_SIZE == 8
+                MPI_Bcast(buffer,
+                        buffer_size,
+                        MPI_DOUBLE,
+                        AdeptMPI::Main_Processor_Number, 
+                        MPI_COMM_WORLD );
+            #elif ADEPT_REAL_TYPE_SIZE == 16
+                MPI_Bcast(buffer,
+                        buffer_size,
+                        MPI_LONG_DOUBLE ,
+                        AdeptMPI::Main_Processor_Number, 
+                        MPI_COMM_WORLD );
+            #endif
             #endif
         }
 
@@ -58,11 +103,6 @@ namespace adept {
                   MPI_COMM_WORLD );
         *status = static_cast<adept::MinimizerStatus>(buffer);
         #endif
-        }
-
-        // Primary MPI Processor.
-        inline bool Adept_Primary_MPI_Processor(void) {
-           return(AdeptMPI::This_Processor_Number == AdeptMPI::Main_Processor_Number);
         }
 
     };

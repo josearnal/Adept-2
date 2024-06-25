@@ -11,6 +11,7 @@
 #include <limits>
 #include <cmath>
 #include <adept/Minimizer.h>
+#include <adept/AdeptMPI.h>
 
 namespace adept {
 
@@ -46,20 +47,30 @@ namespace adept {
     ++n_samples_;
     state_up_to_date = -1;
 
+    bool infinite_cf = !std::isfinite(cf);
+    bool infinite_grad = any(!isfinite(gradient));
+
+    adept::internal::Adept_Broadcast_MPI(&infinite_cf,1);
+    adept::internal::Adept_Broadcast_MPI(&infinite_grad,1);
+
     // Check cost function and gradient are finite
-    if (!std::isfinite(cf)) {
+    if (infinite_cf) {
       return MINIMIZER_STATUS_INVALID_COST_FUNCTION;
     }
-    else if (any(!isfinite(gradient))) {
+    else if (infinite_grad) {
       return MINIMIZER_STATUS_INVALID_GRADIENT;
     }
 
     // Calculate gradient in search direction
     grad = dot_product(direction, gradient) * dir_scaling;
 
+    bool Wolfe_conditions = (cf <= cost_function_ + armijo_coeff_*step_size*grad0 // Armijo condition
+	&& std::fabs(grad) <= -curvature_coeff*grad0);
+
+    adept::internal::Adept_Broadcast_MPI(&Wolfe_conditions,1);
+
     // Check Wolfe conditions
-    if (cf <= cost_function_ + armijo_coeff_*step_size*grad0 // Armijo condition
-	&& std::fabs(grad) <= -curvature_coeff*grad0) { // Curvature condition
+    if (Wolfe_conditions) {
       x = test_x;
       final_step_size = step_size;
       cost_function_ = cf;
@@ -127,7 +138,7 @@ namespace adept {
 
     bool is_bound_step = (bound_step_size > 0.0);
     bool at_bound = false;
-
+    adept::internal::Adept_Broadcast_MPI(&grad0,1);
     if (grad0 >= 0.0) {
       return MINIMIZER_STATUS_DIRECTION_UPHILL;
     }
@@ -143,12 +154,15 @@ namespace adept {
 
     // First step: bound the minimum
     while (iterations_remaining > 0) {
-
+      
       MinimizerStatus status
 	= line_search_gradient_check(optimizable, x, direction, test_x,
 				     step_size, gradient, state_up_to_date,
 				     ss2, grad0, dir_scaling,
 				     cf2, grad2, curvature_coeff);
+
+  adept::internal::Adept_Broadcast_MPI(&status);
+  adept::internal::Adept_Broadcast_MPI(&at_bound,1);
       if (status == MINIMIZER_STATUS_SUCCESS) {
 	if (at_bound) {
 	  status = MINIMIZER_STATUS_BOUND_REACHED;
@@ -166,6 +180,9 @@ namespace adept {
 	return status;
       }
      
+      adept::internal::Adept_Broadcast_MPI(&grad2,1);
+      adept::internal::Adept_Broadcast_MPI(&cf2,1);
+      adept::internal::Adept_Broadcast_MPI(&cf1,1);
       if (grad2 > 0.0 || cf2 >= cf1) {
 	// Positive gradient or cost function increase -> bounded
 	// between points 1 and 2
@@ -182,6 +199,7 @@ namespace adept {
 	return MINIMIZER_STATUS_BOUND_REACHED;
       }
       else {
+        if(adept::internal::Adept_Primary_MPI_Processor()){
 	// Reduced cost function but not yet bounded -> look further
 	// ahead
 	Real new_step;
@@ -211,14 +229,17 @@ namespace adept {
 	  ss2 = bound_step_size;
 	  at_bound = true;
 	}
+      } // end if primary processor
       }
-
     }
 
     // Second step: reduce the bounds until we get sufficiently close
     // to the minimum
     while (iterations_remaining > 0) {
-
+      adept::internal::Adept_Broadcast_MPI(&ss2,1);
+      adept::internal::Adept_Broadcast_MPI(&ss1,1);
+      adept::internal::Adept_Broadcast_MPI(&cf1,1);
+      adept::internal::Adept_Broadcast_MPI(&cf0,1);
       if (ss2 <= ss1) {
 	// Two points are identical!
 	if (cf1 < cf0) {
@@ -234,26 +255,29 @@ namespace adept {
 	}
       }
 
-      // Minimizer of cubic function
-      Real step_diff = ss2-ss1;
-      Real theta = (cf1-cf2) * 3.0 / step_diff + grad1 + grad2;
-      Real max_grad = std::max(std::fabs(theta),
-			       std::max(std::fabs(grad1), std::fabs(grad2)));
-      Real scaled_theta = theta / max_grad;
-      Real gamma = max_grad * std::sqrt(scaled_theta*scaled_theta
-					- (grad1/max_grad) * (grad2/max_grad));
-      ss3 = ss1 + ((gamma - grad1 + theta) / (2.0*gamma + grad2 - grad1)) * step_diff;
+      if(adept::internal::Adept_Primary_MPI_Processor()){
+        // Minimizer of cubic function
+        Real step_diff = ss2-ss1;
+        Real theta = (cf1-cf2) * 3.0 / step_diff + grad1 + grad2;
+        Real max_grad = std::max(std::fabs(theta),
+              std::max(std::fabs(grad1), std::fabs(grad2)));
+        Real scaled_theta = theta / max_grad;
+        Real gamma = max_grad * std::sqrt(scaled_theta*scaled_theta
+            - (grad1/max_grad) * (grad2/max_grad));
+        ss3 = ss1 + ((gamma - grad1 + theta) / (2.0*gamma + grad2 - grad1)) * step_diff;
 
 
-      // Bound the step size to be at least 5% away from each end
-      ss3 = std::max(0.95*ss1+0.05*ss2,
-		     std::min(0.05*ss1+0.95*ss2, ss3));
+        // Bound the step size to be at least 5% away from each end
+        ss3 = std::max(0.95*ss1+0.05*ss2,
+          std::min(0.05*ss1+0.95*ss2, ss3));
+      } // end if primary processor
 
       MinimizerStatus status
 	= line_search_gradient_check(optimizable, x, direction, test_x,
 				     step_size, gradient, state_up_to_date,
 				     ss3, grad0, dir_scaling,
 				     cf3, grad3, curvature_coeff);
+    adept::internal::Adept_Broadcast_MPI(&status);
       if (status == MINIMIZER_STATUS_SUCCESS) {
 	return status;
       }
@@ -268,24 +292,26 @@ namespace adept {
 	return status;
       }
      
-      if (grad3 > 0.0) {
-	// Positive gradient -> bounded between points 1 and 3
-	ss2 = ss3;
-	cf2 = cf3;
-	grad2 = grad3;
-      }
-      else if (cf3 < cf1) {
-	// Reduced cost function, negative gradient
-	ss1 = ss3;
-	cf1 = cf3;
-	grad1 = grad3;
-      }
-      else {
-	// Increased cost function, negative gradient
-	ss2 = ss3;
-	cf2 = cf3;
-	grad2 = grad3;
-      }	
+      if(adept::internal::Adept_Primary_MPI_Processor()){
+        if (grad3 > 0.0) {
+    // Positive gradient -> bounded between points 1 and 3
+    ss2 = ss3;
+    cf2 = cf3;
+    grad2 = grad3;
+        }
+        else if (cf3 < cf1) {
+    // Reduced cost function, negative gradient
+    ss1 = ss3;
+    cf1 = cf3;
+    grad1 = grad3;
+        }
+        else {
+    // Increased cost function, negative gradient
+    ss2 = ss3;
+    cf2 = cf3;
+    grad2 = grad3;
+        }	
+       } // end if primary processor
 
       --iterations_remaining;
     }
@@ -293,6 +319,9 @@ namespace adept {
     // Maximum iterations reached: check if cost function has been
     // reduced at all
     state_up_to_date = -1;
+    adept::internal::Adept_Broadcast_MPI(&cf2,1);
+    adept::internal::Adept_Broadcast_MPI(&cf1,1);
+    adept::internal::Adept_Broadcast_MPI(&cf0,1);
     if (cf2 < cf1) {
       // Return value at point 2
       x += (ss2 * dir_scaling) * direction;

@@ -28,7 +28,7 @@ OBJECTS = algorithm.o algorithm_noad.o test_checkpoint.o \
 	test_array_derivatives.o test_thread_safe_arrays.o \
 	test_complex_arrays.o test_packet_operations.o \
 	test_fastexp.o test_reduce_active.o test_minimizer.o \
-	test_interp.o
+	test_interp.o test_mpi.o
 
 GSL_OBJECTS = test_gsl_interface.o state.o rosenbrock_banana_function.o
 
@@ -59,7 +59,7 @@ PROGRAMS = test_adept test_adept_with_and_without_ad test_radiances \
 	test_fixed_arrays test_fixed_arrays_active test_derivatives \
 	test_array_derivatives test_thread_safe_arrays test_complex_arrays \
 	test_packet_operations test_fastexp test_reduce_active test_minimizer \
-	test_interp
+	test_interp test_mpi
 
 all:
 	@echo "********************************************************"
@@ -178,6 +178,11 @@ test_minimizer: test_minimizer.o $(LIBADEPT)
 # Test program 21
 test_interp: test_interp.o $(LIBADEPT)
 	$(CXXLINK) test_interp.o $(MYLIBS)
+
+# Test program 22
+test_mpi: test_mpi.o $(LIBADEPT)
+	$(CXXLINK) test_mpi.o $(MYLIBS)
+
 
 # The no-automatic-differentiation version of the algorithm: uses the
 # -DADEPT_NO_AUTOMATIC_DIFFERENTIATION to produce a version of the

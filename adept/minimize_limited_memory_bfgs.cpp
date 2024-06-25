@@ -95,6 +95,7 @@ namespace adept {
     Vector previous_gradient(nx);
     Vector direction(nx);
     Vector test_x(nx); // Used by the line search only
+    Real curvature_coeff;
 
     // Previous states needed by the L-BFGS algorithm
     int n_states = std::min(nx, lbfgs_n_states_);
@@ -124,7 +125,7 @@ namespace adept {
       if (state_up_to_date < 1) {
 	cost_function_ = optimizable.calc_cost_function_gradient(x, gradient);
 
-  if(adept::internal::Adept_Primary_MPI_Processor()){
+      if(adept::internal::Adept_Primary_MPI_Processor()){
 	state_up_to_date = 1;
 	++n_samples_;
 
@@ -135,25 +136,34 @@ namespace adept {
 	// Check cost function and gradient are finite
 	if (!std::isfinite(cost_function_)) {
 	  status_ = MINIMIZER_STATUS_INVALID_COST_FUNCTION;
-	  break;
+
 	}
 	else if (any(!isfinite(gradient))) {
 	  status_ = MINIMIZER_STATUS_INVALID_GRADIENT;
-	  break;
+
 	}
       }
     }
+
+  adept::internal::Adept_Broadcast_MPI(&status_);
+  if (status_ != MINIMIZER_STATUS_NOT_YET_CONVERGED) break;
 
   if(adept::internal::Adept_Primary_MPI_Processor()){
       // Check cost function and gradient are finite
       if (!std::isfinite(cost_function_)) {
 	status_ = MINIMIZER_STATUS_INVALID_COST_FUNCTION;
-	break;
+
       }
       else if (any(!isfinite(gradient))) {
 	status_ = MINIMIZER_STATUS_INVALID_GRADIENT;
-	break;
+
       }
+
+  } // end if primary processor
+
+  adept::internal::Adept_Broadcast_MPI(&status_);
+  if  (status_ != MINIMIZER_STATUS_NOT_YET_CONVERGED) break;
+  if  (adept::internal::Adept_Primary_MPI_Processor()){
 
       // Compute L2 norm of gradient to see how "flat" the environment
       // is
@@ -166,9 +176,14 @@ namespace adept {
       // to a user-specified threshold
       if (gradient_norm_ <= converged_gradient_norm_) {
 	status_ = MINIMIZER_STATUS_SUCCESS;
-	break;
       }
+  }
 
+  adept::internal::Adept_Broadcast_MPI(&status_);
+  if  (status_ != MINIMIZER_STATUS_NOT_YET_CONVERGED) {
+    break;
+    }
+  if  (adept::internal::Adept_Primary_MPI_Processor()){
       // Store state and gradient differences
       if (n_iterations_ > 0) {
 	data.store(n_iterations_, x-previous_x, gradient-previous_gradient);
@@ -212,7 +227,7 @@ namespace adept {
 
       // Perform line search, storing new state vector in x, and
       // returning MINIMIZER_STATUS_NOT_YET_CONVERGED on success
-      Real curvature_coeff = lbfgs_curvature_coeff_;
+      curvature_coeff = lbfgs_curvature_coeff_;
       if (n_iterations_ < n_states) {
 	// In the early iterations we require the line search to be
 	// more accurate since the L-BFGS update will have fewer
@@ -228,11 +243,12 @@ namespace adept {
       // of the minimum, so the step size is the norm of the direction
       // vector
       step_size = norm2(direction);
+  } // end if primary processor
       MinimizerStatus ls_status
 	= line_search(optimizable, x, direction,
 		      test_x, step_size, gradient, state_up_to_date,
 		      curvature_coeff);
-
+  if (adept::internal::Adept_Primary_MPI_Processor()){
       if (ls_status == MINIMIZER_STATUS_SUCCESS) {
 	// Successfully minimized along search direction: continue to
 	// next iteration
@@ -249,13 +265,14 @@ namespace adept {
 	  && n_iterations_ >= max_iterations_) {
 	status_ = MINIMIZER_STATUS_MAX_ITERATIONS_REACHED;
       }
-
+      
   } // end if primary processor
 
       // End of main loop: if status_ is anything other than
       // MINIMIZER_STATUS_NOT_YET_CONVERGED then no more iterations
       // are performed
-      adept::internal::Adept_Broadcast_MPI(&status_);
+    
+  adept::internal::Adept_Broadcast_MPI(&status_);
     }
      
     adept::internal::Adept_Broadcast_MPI(&state_up_to_date,1); 

@@ -8,6 +8,10 @@
 #include <adept/AdeptMPI.h>
 #include <adept/exception.h>
 
+#ifdef HAVE_CONFIG_H
+#include "../config.h"
+#endif
+
 #ifdef HAVE_MPI
 #include "mpi.h"
 #endif//HAVE_MPI
