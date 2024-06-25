@@ -150,7 +150,7 @@ public:
                     AdeptMPI::Main_Processor_Number, 
                     MPI_COMM_WORLD );
         #else
-        for (int i = 0; i < count; ++i) {
+        for (int i = 0; i < total_num_elements; ++i) {
             recvbuf[i] = sendbuf[i];
         }
         #endif
@@ -191,7 +191,7 @@ public:
                     AdeptMPI::Main_Processor_Number, 
                     MPI_COMM_WORLD);
         #else
-        for (int i = 0; i < count; ++i) {
+        for (int i = 0; i < total_num_elements; ++i) {
             recvbuf[i] = sendbuf[i];
         }
         #endif
